@@ -40,6 +40,41 @@ nix run github:0xcaff/codex-web
 
 then open <http://127.0.0.1:8214> in a browser.
 
+### windows quick start
+
+This fork includes Windows helper scripts. From a fresh clone, double-click:
+
+```powershell
+git clone https://github.com/Yiruma96/codex-web.git
+cd codex-web
+```
+
+```text
+setup-windows.bat
+```
+
+After setup completes, start the local/Tailscale version with:
+
+```text
+start-codex-web.bat
+```
+
+Or start a temporary Cloudflare Tunnel with:
+
+```text
+start-codex-web-cloudflare.bat
+```
+
+The start scripts also auto-run `setup-windows.ps1` if required build outputs
+are missing. The repository intentionally does not commit `node_modules/`, the
+downloaded Codex Desktop zip, extracted app resources, logs, or temporary
+Cloudflare URLs. On this Windows setup those generated artifacts are roughly
+hundreds of MB and include extracted upstream desktop resources, so they are
+better reproduced locally or shipped separately as release artifacts.
+
+See [WINDOWS_SETUP.md](./WINDOWS_SETUP.md) for details, update notes, and
+Cloudflare/Tailscale behavior.
+
 ### sign in
 
 ensure the codex cli on the host machine is signed in before starting the

@@ -1,3 +1,10 @@
 node_modules/
 scratch*/
 sentry
+Codex.app/
+cloudflare-url.txt
+codex-web.*.log
+src/server/**/*.d.ts
+src/server/**/*.d.ts.map
+src/server/**/*.js
+src/server/**/*.js.map

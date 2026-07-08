@@ -1,5 +1,7 @@
 # codex-web
 
+**English** | [中文](./readme_zh.md)
+
 A browser frontend for Codex Desktop, running on a Windows machine you control.
 
 This fork is based on [0xcaff/codex-web](https://github.com/0xcaff/codex-web)

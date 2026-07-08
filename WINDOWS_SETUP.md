@@ -4,20 +4,24 @@ This repo is `codex-web`, a browser wrapper around Codex Desktop's webview and
 main-process bridge. The upstream one-shot `npx --yes github:0xcaff/codex-web`
 path is Unix-oriented. On Windows, use the notes below instead.
 
-Current local checkout:
+Current upgrade staging checkout:
 
 ```text
-D:\codex-web
+D:\codex-web-new
 ```
+
+The existing production checkout can remain at `D:\codex-web` until this staging
+tree is validated and swapped in.
 
 Current known-good shape:
 
 ```text
 Browser UI                  http://127.0.0.1:8214/
 codex-web server            node src/server/main.js
-Codex CLI/app-server        C:\Users\a2108\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe
+Codex CLI/app-server        newest runnable C:\Users\a2108\AppData\Local\OpenAI\Codex\bin\*\codex.exe, then PATH
 Codex shared state          C:\Users\a2108\.codex
-Pinned Desktop web assets   Codex-darwin-arm64-26.513.20950.zip
+Windows Desktop package     OpenAI.Codex_26.623.19656.0_x64__2p2nqsd0c76g0
+Desktop app.asar version    26.623.141536
 ```
 
 ## Fresh clone quick start
@@ -28,9 +32,10 @@ Clone the repository, then double-click:
 setup-windows.bat
 ```
 
-This installs dependencies, downloads the pinned Codex Desktop app bundle,
-extracts only the files codex-web needs, applies the web patches, and builds the
-browser/server bundles. After setup, use one of the start scripts below.
+This installs dependencies, copies `app.asar` from the installed Microsoft Store
+Codex Desktop package, extracts only the files codex-web needs, applies the web
+patches, and builds the browser/server bundles. After setup, use one of the
+start scripts below.
 
 The start scripts also auto-run `setup-windows.ps1` when build outputs are
 missing, so a direct double-click on a start script can recover a fresh checkout
@@ -42,8 +47,7 @@ Generated runtime/build artifacts are intentionally not committed:
 node_modules/                         about 138 MB locally
 scratch/                              about 475 MB locally
 scratch/asar/                         about 145 MB locally
-scratch/Codex-darwin-arm64-*.zip      about 330 MB locally
-Codex.app/                            about 141 MB locally when extracted at repo root
+scratch/app-*.asar                    about 161 MB locally
 src/server/*.js/*.d.ts/*.map          small, rebuilt by setup
 cloudflare-url.txt                    per-run secret-ish temporary URL
 codex-web.*.log                       local logs
@@ -86,12 +90,18 @@ Then open:
 http://127.0.0.1:8214/
 ```
 
-The script auto-detects `codex.exe` from `PATH` and sets `CODEX_CLI_PATH`.
-Override it when needed:
+The script first looks for runnable Codex runtime CLIs under
+`%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe`, chooses the highest
+`codex-cli` version, then falls back to `PATH`. It sets `CODEX_CLI_PATH` for the
+server. Override it when needed:
+
+The Windows start scripts treat `8214` as the fixed local port. If another
+process is already listening on that port, the script stops that process tree
+before starting the current checkout.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start-codex-web.ps1 `
-  -CodexPath "C:\Users\a2108\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe"
+  -CodexPath "C:\Users\a2108\AppData\Local\OpenAI\Codex\bin\ea1c60319a1dcb19\codex.exe"
 ```
 
 ## Start with Cloudflare Tunnel
@@ -110,6 +120,11 @@ The batch file starts codex-web on local loopback only:
 ```text
 http://127.0.0.1:8214/
 ```
+
+This Cloudflare entry point uses the same fixed-port rule as the local script:
+`8214` is not auto-shifted to another port. If it is occupied, the script stops
+the process currently listening there before starting a fresh local server and
+tunnel.
 
 Then it starts a Cloudflare Quick Tunnel and prints a temporary public URL like:
 
@@ -195,31 +210,27 @@ npm.cmd install --ignore-scripts
 npm.cmd rebuild better-sqlite3
 ```
 
-Download the pinned Codex Desktop app bundle:
+Install or update Codex Desktop from Microsoft Store, then let setup copy the
+installed Windows package's `app.asar`:
 
 ```powershell
-New-Item -ItemType Directory -Force scratch | Out-Null
-Invoke-WebRequest `
-  -Uri "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-26.513.20950.zip" `
-  -OutFile "scratch\Codex-darwin-arm64-26.513.20950.zip"
-Expand-Archive -LiteralPath "scratch\Codex-darwin-arm64-26.513.20950.zip" -DestinationPath "scratch" -Force
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-windows.ps1
 ```
 
-Extract only the files codex-web needs. Full `asar extract` can fail on Windows
-when the archive references unpacked native files.
+By default this uses `OpenAI.Codex` version `26.623.19656.0`. To build against a
+specific extracted or copied archive, pass `-AppAsarPath`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-windows.ps1 `
+  -AppAsarPath "C:\path\to\app.asar"
+```
+
+Manual extraction still uses the targeted extractor. Full `asar extract` can
+fail on Windows when the archive references unpacked native files.
 
 ```powershell
 node .\scripts\extract-needed-asar.mjs `
-  --asar "scratch\Codex.app\Contents\Resources\app.asar" `
-  --out "scratch\asar" `
-  --force
-```
-
-If you extracted the zip to the repo root instead of `scratch`, use:
-
-```powershell
-node .\scripts\extract-needed-asar.mjs `
-  --asar "Codex.app\Contents\Resources\app.asar" `
+  --asar "scratch\app-26.623.19656.0.asar" `
   --out "scratch\asar" `
   --force
 ```
@@ -230,7 +241,8 @@ Copy the codex-web assets into the extracted webview:
 Copy-Item -LiteralPath .\assets\* -Destination .\scratch\asar\webview\ -Force
 ```
 
-Generate the PWA icon:
+Generate the PWA icon. The filename may change between Desktop releases, so the
+setup script auto-detects `app-*.png` under the extracted webview assets.
 
 ```powershell
 .\node_modules\.bin\sharp.cmd `
@@ -240,10 +252,10 @@ Generate the PWA icon:
   -- extend 64 64 64 64 --background white -- removeAlpha
 ```
 
-Apply the patch set. If Git Bash or WSL is available, the upstream
-`scripts/prepare_asar` patch commands are the reference. On pure PowerShell,
-patching may need manual intervention when upstream Codex Desktop changes
-bundle hashes or formatting. The patch target files are listed in `patches/`.
+Apply the patch set. On Windows, `setup-windows.ps1` applies the portable HTML
+and shell patches with `patch.exe`, then runs
+`scripts/patch-windows-asar.mjs` for the Windows 26.623.19656 bundle chunks.
+This avoids relying on the macOS chunk filenames used by upstream patches.
 
 Build the browser and server bundles:
 
@@ -282,9 +294,10 @@ npm.cmd run build:browser
 npm.cmd run build:server
 ```
 
-If upstream changes the pinned Codex Desktop app version or patch files, rerun
-the fresh build extraction steps above. Expect patch conflicts when the extracted
-Desktop webview/main bundle changed significantly.
+If Microsoft Store installs a newer `OpenAI.Codex` package, rerun
+`setup-windows.ps1`. Expect `scripts/patch-windows-asar.mjs` to fail fast when
+the extracted Desktop webview/main bundle changed significantly; update the
+Windows chunk replacements before treating the build as good.
 
 ## Local generated files
 
@@ -319,9 +332,9 @@ to maintain a Windows fork.
   The main issue is the Unix `prepare` script.
 - PowerShell profile `PSSecurityException` noise is unrelated to codex-web.
   Running commands with `powershell -NoProfile` avoids it.
-- The web UI uses an older extracted Codex Desktop webview/main bundle while the
-  app-server is your local current `codex.exe`. Some new Desktop features may not
-  work, and protocol warnings such as `expectedVersion=6` versus `version=8` can
-  appear.
+- The web UI uses the extracted Codex Desktop webview/main bundle from the
+  installed Microsoft Store package, while the app-server is the newest runnable
+  local `codex.exe` runtime the start script can find. If you override
+  `-CodexPath`, make sure that CLI is compatible with the extracted webview.
 - Do not expose `127.0.0.1:8214` to untrusted networks. Anyone who can use this
   UI can operate Codex with this Windows user's permissions.

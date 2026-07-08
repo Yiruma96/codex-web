@@ -46,6 +46,78 @@ function Resolve-CommandPath {
   throw $ErrorMessage
 }
 
+function Get-CodexCliCandidate {
+  param([string]$Path)
+
+  try {
+    $resolved = Resolve-Path -LiteralPath $Path -ErrorAction Stop
+    $resolvedPath = $resolved.ProviderPath
+    $versionOutput = & $resolvedPath --version 2>$null | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0) {
+      return $null
+    }
+
+    $versionText = "0.0.0"
+    if ([string]$versionOutput -match 'codex-cli\s+([0-9]+(?:\.[0-9]+)+)') {
+      $versionText = $Matches[1]
+    }
+
+    $item = Get-Item -LiteralPath $resolvedPath
+    return [pscustomobject]@{
+      Path = $resolvedPath
+      Version = [version]$versionText
+      VersionText = $versionText
+      LastWriteTimeUtc = $item.LastWriteTimeUtc
+    }
+  } catch {
+    return $null
+  }
+}
+
+function Resolve-CodexCliPath {
+  param([string]$ExplicitPath)
+
+  if ($ExplicitPath) {
+    return (Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).ProviderPath
+  }
+
+  $candidatePaths = New-Object System.Collections.Generic.List[string]
+  $localRuntimeBin = Join-Path $env:LOCALAPPDATA "OpenAI\Codex\bin"
+  if (Test-Path -LiteralPath $localRuntimeBin) {
+    foreach ($runtime in Get-ChildItem -LiteralPath $localRuntimeBin -Directory -ErrorAction SilentlyContinue) {
+      $candidate = Join-Path $runtime.FullName "codex.exe"
+      if (Test-Path -LiteralPath $candidate) {
+        $candidatePaths.Add($candidate)
+      }
+    }
+  }
+
+  foreach ($name in @("codex.exe", "codex")) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) {
+      $candidatePaths.Add($cmd.Source)
+    }
+  }
+
+  $candidates = @(
+    $candidatePaths |
+      Select-Object -Unique |
+      ForEach-Object { Get-CodexCliCandidate -Path $_ } |
+      Where-Object { $_ -ne $null }
+  )
+
+  if ($candidates.Count -eq 0) {
+    throw "Could not find a runnable codex CLI. Re-run with -CodexPath C:\path\to\codex.exe."
+  }
+
+  $selected = $candidates |
+    Sort-Object -Property @{ Expression = "Version"; Descending = $true }, @{ Expression = "LastWriteTimeUtc"; Descending = $true } |
+    Select-Object -First 1
+
+  Write-Host ("Detected Codex CLI version: {0}" -f $selected.VersionText)
+  return $selected.Path
+}
+
 function Quote-ProcessArgument {
   param([string]$Value)
 
@@ -195,20 +267,25 @@ function Get-AncestorProcessIds {
   return $ids
 }
 
-function Stop-ExistingCodexWebOnPort {
+function Stop-ExistingListenersOnPort {
   param([int]$ListenPort)
 
   $listeners = @(Get-NetTCPConnection -LocalPort $ListenPort -State Listen -ErrorAction SilentlyContinue)
   foreach ($listener in $listeners) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
     $commandLine = [string]$process.CommandLine
-    if ($commandLine -match 'src[\\/]server[\\/]main\.js') {
-      Write-Host ("Stopping existing codex-web listener {0}:{1} (PID {2})." -f $listener.LocalAddress, $listener.LocalPort, $listener.OwningProcess)
-      Stop-ProcessTree -ProcessId $listener.OwningProcess
-      Start-Sleep -Milliseconds 700
-    } else {
-      throw "Port $ListenPort is already in use by PID $($listener.OwningProcess), but it does not look like codex-web."
+    Write-Host ("Port {0} is already used by PID {1}; stopping that process before starting codex-web." -f $ListenPort, $listener.OwningProcess)
+    if ($commandLine) {
+      Write-Host ("Existing command: {0}" -f $commandLine)
     }
+    Stop-ProcessTree -ProcessId $listener.OwningProcess
+    Start-Sleep -Milliseconds 700
+  }
+
+  $remainingListeners = @(Get-NetTCPConnection -LocalPort $ListenPort -State Listen -ErrorAction SilentlyContinue)
+  if ($remainingListeners.Count -gt 0) {
+    $listener = $remainingListeners | Select-Object -First 1
+    throw "Port $ListenPort is still in use by PID $($listener.OwningProcess) after attempting to stop it."
   }
 }
 
@@ -236,8 +313,10 @@ function Get-ProjectCloudflaredProcesses {
 function Get-ProjectCodexWebProcesses {
   param([int]$ListenPort)
 
+  $projectPathPattern = [regex]::Escape($PSScriptRoot)
   return @(Get-CimInstance Win32_Process | Where-Object {
     [string]$_.CommandLine -match 'src[\\/]server[\\/]main\.js' -and
+    [string]$_.CommandLine -match $projectPathPattern -and
     [string]$_.CommandLine -match "--port $ListenPort"
   })
 }
@@ -319,10 +398,7 @@ function Wait-ForLocalServer {
 
 Ensure-CodexWebBuild
 
-$codexExe = Resolve-CommandPath `
-  -ExplicitPath $CodexPath `
-  -Names @("codex.exe", "codex") `
-  -ErrorMessage "Could not find codex on PATH. Re-run with -CodexPath C:\path\to\codex.exe."
+$codexExe = Resolve-CodexCliPath -ExplicitPath $CodexPath
 
 $cloudflaredExe = Resolve-CommandPath `
   -ExplicitPath $CloudflaredPath `
@@ -363,7 +439,7 @@ if (-not $hasMutex) {
 try {
   Stop-ExistingScriptHostsForProject
   Stop-ExistingCloudflaredForProject
-  Stop-ExistingCodexWebOnPort -ListenPort $Port
+  Stop-ExistingListenersOnPort -ListenPort $Port
   Stop-ExistingCloudflaredForProject
   New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
   Remove-Item -LiteralPath $tunnelUrlPath -Force -ErrorAction SilentlyContinue

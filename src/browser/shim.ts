@@ -7,7 +7,6 @@ import {
   isLocalFilePickerMessage,
 } from "./files";
 import {
-  installWorkspaceRootDialog,
   openSelectWorkspaceRootDialog,
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
@@ -82,6 +81,24 @@ type ElectronShimState = {
   initialRoute?: string;
   initialSidebarState?: boolean;
   closeSidebar?: () => void;
+  services?: {
+    requestUserInputAutoResolution?: {
+      recordConversationActivity?: (args: {
+        conversationId: string;
+        hostId: string;
+      }) => void;
+      setConversationPresented?: (args: {
+        conversationId: string;
+        hostId: string;
+        presented: boolean;
+      }) => void;
+      snooze?: (args: {
+        conversationId: string;
+        hostId: string;
+        requestId: string;
+      }) => void;
+    };
+  };
   onMemoryNavigationChanged?: (navigation: MemoryNavigationChange) => void;
   overrideAdapter?: {
     getGateOverride?: (
@@ -313,9 +330,30 @@ const mobileMediaQuery = matchMedia("(max-width: 768px)");
 const initialSidebarState = !mobileMediaQuery.matches;
 const electronShim = (window.__ELECTRON_SHIM__ ??= {});
 
+Object.assign(globalThis, {
+  process: {
+    arch: "arm64",
+    platform: "darwin",
+    versions: {
+      electron: "41.2.0",
+    },
+  },
+});
+
+electronShim.services = {
+  ...electronShim.services,
+  requestUserInputAutoResolution: {
+    ...electronShim.services?.requestUserInputAutoResolution,
+    recordConversationActivity: () => undefined,
+    setConversationPresented: () => undefined,
+    snooze: () => undefined,
+  },
+};
+
 electronShim.overrideAdapter = {
   getGateOverride(e) {
-    if (e.name === "2929582856") { // codex_app_sunset
+    if (e.name === "2929582856") {
+      // codex_app_sunset
       return {
         ...e,
         value: false,
@@ -422,6 +460,21 @@ export const ipcRenderer = {
       args,
     });
   },
+  postMessage(
+    channel: string,
+    message: unknown,
+    transfer?: Transferable[],
+  ): void {
+    if (transfer && transfer.length > 0) {
+      return;
+    }
+
+    enqueueMessage({
+      type: "ipc-renderer-send",
+      channel,
+      args: [message],
+    });
+  },
   sendSync(channel: string, ..._args: unknown[]): unknown {
     if (channel === "codex_desktop:get-sentry-init-options") {
       return {
@@ -435,6 +488,10 @@ export const ipcRenderer = {
 
     if (channel === "codex_desktop:get-build-flavor") {
       return buildFlavor;
+    }
+
+    if (channel === "codex_desktop:get-uses-owl-app-shell") {
+      return false;
     }
 
     if (channel === "codex_desktop:get-shared-object-snapshot") {

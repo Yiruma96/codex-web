@@ -66,11 +66,16 @@ start-codex-web-cloudflare.bat
 ```
 
 The start scripts also auto-run `setup-windows.ps1` if required build outputs
-are missing. The repository intentionally does not commit `node_modules/`, the
-downloaded Codex Desktop zip, extracted app resources, logs, or temporary
-Cloudflare URLs. On this Windows setup those generated artifacts are roughly
-hundreds of MB and include extracted upstream desktop resources, so they are
-better reproduced locally or shipped separately as release artifacts.
+are missing. On Windows, setup copies `app.asar` from the installed Microsoft
+Store Codex Desktop package and the start scripts prefer the newest runnable
+local Codex runtime CLI under `%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe`
+before falling back to `PATH`. The Windows start scripts keep `8214` as the
+fixed local port; if that port is already occupied, they stop the current
+listener before starting this checkout. The repository intentionally does not commit
+`node_modules/`, copied/extracted app resources, logs, or temporary Cloudflare
+URLs. On this Windows setup those generated artifacts are roughly hundreds of MB
+and include extracted upstream desktop resources, so they are better reproduced
+locally or shipped separately as release artifacts.
 
 See [WINDOWS_SETUP.md](./WINDOWS_SETUP.md) for details, update notes, and
 Cloudflare/Tailscale behavior.

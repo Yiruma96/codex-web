@@ -1,5 +1,6 @@
 param(
-  [string]$AppVersion = "26.513.20950",
+  [string]$AppVersion = "26.623.19656.0",
+  [string]$AppAsarPath = "",
   [switch]$SkipInstall
 )
 
@@ -77,6 +78,19 @@ function Invoke-Step {
   & $Action
 }
 
+function Invoke-NativeCommand {
+  param(
+    [string]$FilePath,
+    [string[]]$Arguments,
+    [string]$Name
+  )
+
+  & $FilePath @Arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Name failed with exit code $LASTEXITCODE."
+  }
+}
+
 function Extract-ZipEntry {
   param(
     [string]$ZipPath,
@@ -102,6 +116,67 @@ function Extract-ZipEntry {
   }
 }
 
+function Resolve-CodexDesktopAsar {
+  param(
+    [string]$RequestedVersion,
+    [string]$ExplicitAsarPath
+  )
+
+  if ($ExplicitAsarPath) {
+    if (-not (Test-Path -LiteralPath $ExplicitAsarPath)) {
+      throw "Could not find app.asar at $ExplicitAsarPath."
+    }
+
+    return @{
+      Version = $RequestedVersion
+      Path = (Resolve-Path -LiteralPath $ExplicitAsarPath).ProviderPath
+      Source = "explicit"
+    }
+  }
+
+  $packages = @(Get-AppxPackage -Name OpenAI.Codex -ErrorAction SilentlyContinue |
+    Sort-Object { [version]$_.Version } -Descending)
+
+  if ($RequestedVersion) {
+    $requestedPackage = $packages | Where-Object { [string]$_.Version -eq $RequestedVersion } | Select-Object -First 1
+    if ($requestedPackage) {
+      $packages = @($requestedPackage) + @($packages | Where-Object { $_.PackageFullName -ne $requestedPackage.PackageFullName })
+    }
+  }
+
+  foreach ($package in $packages) {
+    $candidate = Join-Path $package.InstallLocation "app\resources\app.asar"
+    if (Test-Path -LiteralPath $candidate) {
+      return @{
+        Version = [string]$package.Version
+        Path = $candidate
+        Source = $package.PackageFullName
+      }
+    }
+  }
+
+  throw "Could not find installed OpenAI.Codex app.asar. Install or update Codex Desktop from Microsoft Store, or pass -AppAsarPath C:\path\to\app.asar."
+}
+
+function Resolve-PwaSourceIcon {
+  param([string]$AssetsPath)
+
+  $preferred = Join-Path $AssetsPath "app-D0g8sCle.png"
+  if (Test-Path -LiteralPath $preferred) {
+    return $preferred
+  }
+
+  $fallback = Get-ChildItem -LiteralPath $AssetsPath -Filter "app-*.png" -File |
+    Sort-Object Name |
+    Select-Object -First 1
+
+  if ($fallback) {
+    return $fallback.FullName
+  }
+
+  throw "Could not find Codex app icon under $AssetsPath."
+}
+
 if (-not (Test-Path -LiteralPath "package.json")) {
   throw "Run this script from the codex-web repository root."
 }
@@ -109,47 +184,34 @@ if (-not (Test-Path -LiteralPath "package.json")) {
 $node = Resolve-RequiredCommand -Names @("node.exe", "node") -ErrorMessage "Could not find Node.js. Install Node.js 22+ and re-run setup-windows.bat."
 $npm = Resolve-RequiredCommand -Names @("npm.cmd", "npm") -ErrorMessage "Could not find npm. Install Node.js and re-run setup-windows.bat."
 $patch = Resolve-PatchCommand
-$zipUrl = "https://persistent.oaistatic.com/codex-app-prod/Codex-darwin-arm64-$AppVersion.zip"
-$zipPath = "scratch\Codex-darwin-arm64-$AppVersion.zip"
-$asarPath = "scratch\app.asar"
+$codexDesktopAsar = Resolve-CodexDesktopAsar -RequestedVersion $AppVersion -ExplicitAsarPath $AppAsarPath
+$AppVersion = $codexDesktopAsar.Version
+$asarPath = "scratch\app-$AppVersion.asar"
 $asarOut = "scratch\asar"
 
 Write-Host "Using Node:  $node"
 Write-Host "Using npm:   $npm"
 Write-Host "Using patch: $patch"
+Write-Host "Using Codex Desktop app.asar: $($codexDesktopAsar.Path)"
+Write-Host "Codex Desktop package source: $($codexDesktopAsar.Source)"
 
 if (-not $SkipInstall) {
   Invoke-Step "Install npm dependencies" {
-    & $npm install --ignore-scripts
+    Invoke-NativeCommand -FilePath $npm -Arguments @("install", "--ignore-scripts") -Name "npm install"
   }
 
   Invoke-Step "Rebuild native modules" {
-    & $npm rebuild better-sqlite3
+    Invoke-NativeCommand -FilePath $npm -Arguments @("rebuild", "better-sqlite3") -Name "npm rebuild better-sqlite3"
   }
 }
 
-Invoke-Step "Download pinned Codex Desktop bundle" {
+Invoke-Step "Copy Codex Desktop app.asar" {
   New-Item -ItemType Directory -Force -Path "scratch" | Out-Null
-  if (Test-Path -LiteralPath $zipPath) {
-    Write-Host "Already downloaded: $zipPath"
-  } else {
-    Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
-  }
-}
-
-Invoke-Step "Extract app.asar from Codex Desktop zip" {
-  if (Test-Path -LiteralPath $asarPath) {
-    Write-Host "Already extracted: $asarPath"
-  } else {
-    Extract-ZipEntry `
-      -ZipPath $zipPath `
-      -EntryName "Codex.app/Contents/Resources/app.asar" `
-      -DestinationPath $asarPath
-  }
+  Copy-Item -LiteralPath $codexDesktopAsar.Path -Destination $asarPath -Force
 }
 
 Invoke-Step "Extract required app.asar files" {
-  & $node ".\scripts\extract-needed-asar.mjs" --asar $asarPath --out $asarOut --force
+  Invoke-NativeCommand -FilePath $node -Arguments @(".\scripts\extract-needed-asar.mjs", "--asar", $asarPath, "--out", $asarOut, "--force") -Name "extract-needed-asar"
 }
 
 Invoke-Step "Copy browser assets" {
@@ -157,10 +219,12 @@ Invoke-Step "Copy browser assets" {
 }
 
 Invoke-Step "Generate PWA icon" {
-  & $node `
-    ".\scripts\generate-pwa-icon.mjs" `
-    "scratch\asar\webview\assets\app-D0g8sCle.png" `
+  $pwaSourceIcon = Resolve-PwaSourceIcon -AssetsPath "scratch\asar\webview\assets"
+  Invoke-NativeCommand -FilePath $node -Arguments @(
+    ".\scripts\generate-pwa-icon.mjs",
+    $pwaSourceIcon,
     "scratch\asar\webview\assets\pwa-icon-512.png"
+  ) -Name "generate-pwa-icon"
 }
 
 Invoke-Step "Prettify patch targets" {
@@ -169,45 +233,46 @@ Invoke-Step "Prettify patch targets" {
     throw "prettier.cmd was not found. Re-run setup without -SkipInstall."
   }
 
-  $patchedFiles = Get-PatchedFiles
+  $patchedFiles = Get-PatchedFiles | Where-Object { Test-Path -LiteralPath $_ }
   if ($patchedFiles.Count -gt 0) {
-    & $prettier --ignore-path NUL --ignore-unknown --write @patchedFiles
+    Invoke-NativeCommand -FilePath $prettier -Arguments (@("--ignore-path", "NUL", "--ignore-unknown", "--write") + $patchedFiles) -Name "prettier patch targets"
   }
 }
 
-Invoke-Step "Apply codex-web patches" {
+Invoke-Step "Apply portable codex-web patches" {
   $patches = @(
     "webview-remove-csp.patch",
-    "webview-style.patch",
     "webview-preload.patch",
     "webview-favicon.patch",
     "webview-pwa.patch",
-    "webview-thread-title.patch",
-    "webview-initial-route.patch",
-    "webview-electron-shim-close-sidebar.patch",
-    "webview-prosemirror-inputmode.patch",
-    "webview-use-atfs-for-local-files.patch",
-    "webview-prompt-search-param.patch",
-    "webview-statsig-override-adapter.patch",
-    "sentry-disable-shell.patch",
-    "sentry-disable-webview.patch"
+    "sentry-disable-shell.patch"
   )
 
   foreach ($patchName in $patches) {
     $patchPath = Join-Path $PSScriptRoot "patches\$patchName"
     Write-Host "Applying $patchName"
-    & $patch --batch --forward --strip 1 --directory $asarOut --input $patchPath
+    Invoke-NativeCommand -FilePath $patch -Arguments @("--batch", "--forward", "--strip", "1", "--directory", $asarOut, "--input", $patchPath) -Name "patch $patchName"
   }
 
   Remove-Item -LiteralPath "scratch\asar\node_modules\better-sqlite3" -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Invoke-Step "Apply Windows Codex Desktop patches" {
+  Invoke-NativeCommand -FilePath $node -Arguments @(
+    ".\scripts\patch-windows-asar.mjs",
+    "--root",
+    $asarOut,
+    "--app-version",
+    $AppVersion
+  ) -Name "patch-windows-asar"
+}
+
 Invoke-Step "Build browser bundle" {
-  & $npm run build:browser
+  Invoke-NativeCommand -FilePath $npm -Arguments @("run", "build:browser") -Name "npm run build:browser"
 }
 
 Invoke-Step "Build server bundle" {
-  & $npm run build:server
+  Invoke-NativeCommand -FilePath $npm -Arguments @("run", "build:server") -Name "npm run build:server"
 }
 
 Write-Host ""

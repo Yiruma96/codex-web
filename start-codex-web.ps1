@@ -64,6 +64,78 @@ function Get-TailscaleInfo {
   return [pscustomobject]$info
 }
 
+function Get-CodexCliCandidate {
+  param([string]$Path)
+
+  try {
+    $resolved = Resolve-Path -LiteralPath $Path -ErrorAction Stop
+    $resolvedPath = $resolved.ProviderPath
+    $versionOutput = & $resolvedPath --version 2>$null | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0) {
+      return $null
+    }
+
+    $versionText = "0.0.0"
+    if ([string]$versionOutput -match 'codex-cli\s+([0-9]+(?:\.[0-9]+)+)') {
+      $versionText = $Matches[1]
+    }
+
+    $item = Get-Item -LiteralPath $resolvedPath
+    return [pscustomobject]@{
+      Path = $resolvedPath
+      Version = [version]$versionText
+      VersionText = $versionText
+      LastWriteTimeUtc = $item.LastWriteTimeUtc
+    }
+  } catch {
+    return $null
+  }
+}
+
+function Resolve-CodexCliPath {
+  param([string]$ExplicitPath)
+
+  if ($ExplicitPath) {
+    return (Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).ProviderPath
+  }
+
+  $candidatePaths = New-Object System.Collections.Generic.List[string]
+  $localRuntimeBin = Join-Path $env:LOCALAPPDATA "OpenAI\Codex\bin"
+  if (Test-Path -LiteralPath $localRuntimeBin) {
+    foreach ($runtime in Get-ChildItem -LiteralPath $localRuntimeBin -Directory -ErrorAction SilentlyContinue) {
+      $candidate = Join-Path $runtime.FullName "codex.exe"
+      if (Test-Path -LiteralPath $candidate) {
+        $candidatePaths.Add($candidate)
+      }
+    }
+  }
+
+  foreach ($name in @("codex.exe", "codex")) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) {
+      $candidatePaths.Add($cmd.Source)
+    }
+  }
+
+  $candidates = @(
+    $candidatePaths |
+      Select-Object -Unique |
+      ForEach-Object { Get-CodexCliCandidate -Path $_ } |
+      Where-Object { $_ -ne $null }
+  )
+
+  if ($candidates.Count -eq 0) {
+    throw "Could not find a runnable codex CLI. Re-run with -CodexPath C:\path\to\codex.exe."
+  }
+
+  $selected = $candidates |
+    Sort-Object -Property @{ Expression = "Version"; Descending = $true }, @{ Expression = "LastWriteTimeUtc"; Descending = $true } |
+    Select-Object -First 1
+
+  Write-Host ("Detected Codex CLI version: {0}" -f $selected.VersionText)
+  return $selected.Path
+}
+
 function Show-CodexWebLinks {
   param(
     [string]$ListenHost,
@@ -99,6 +171,59 @@ function Show-CodexWebLinks {
   Write-Host ""
 }
 
+function Get-PortListener {
+  param([int]$ListenPort)
+
+  return Get-NetTCPConnection -LocalPort $ListenPort -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+}
+
+function Get-ProcessCommandLineById {
+  param([int]$ProcessId)
+
+  $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+  return [string]$process.CommandLine
+}
+
+function Get-ChildProcessIds {
+  param([int]$ProcessId)
+
+  $children = @(Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $ProcessId })
+  foreach ($child in $children) {
+    Get-ChildProcessIds -ProcessId $child.ProcessId
+    $child.ProcessId
+  }
+}
+
+function Stop-ProcessTree {
+  param([int]$ProcessId)
+
+  $ids = @((Get-ChildProcessIds -ProcessId $ProcessId) + $ProcessId)
+  $seen = @{}
+  foreach ($id in $ids) {
+    if ($seen.ContainsKey($id)) {
+      continue
+    }
+    $seen[$id] = $true
+    Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Stop-ExistingListenersOnPort {
+  param([int]$ListenPort)
+
+  $listeners = @(Get-NetTCPConnection -LocalPort $ListenPort -State Listen -ErrorAction SilentlyContinue)
+  foreach ($listener in $listeners) {
+    $commandLine = Get-ProcessCommandLineById -ProcessId $listener.OwningProcess
+    Write-Host ("Port {0} is already used by PID {1}; stopping that process before starting codex-web." -f $ListenPort, $listener.OwningProcess)
+    if ($commandLine) {
+      Write-Host ("Existing command: {0}" -f $commandLine)
+    }
+    Stop-ProcessTree -ProcessId $listener.OwningProcess
+    Start-Sleep -Milliseconds 700
+  }
+}
+
 Ensure-CodexWebBuild
 
 $tailscaleInfo = Get-TailscaleInfo
@@ -110,27 +235,14 @@ if (-not $HostName) {
   }
 }
 
+Stop-ExistingListenersOnPort -ListenPort $Port
 $existingListeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 if ($existingListeners.Count -gt 0) {
   $listener = $existingListeners | Select-Object -First 1
-  Write-Host ("codex-web already appears to be running on {0}:{1} (PID {2})." -f $listener.LocalAddress, $listener.LocalPort, $listener.OwningProcess)
-  Show-CodexWebLinks -ListenHost $listener.LocalAddress -ListenPort $Port -TailscaleInfo $tailscaleInfo
-  exit 0
+  throw "Port $Port is still in use by PID $($listener.OwningProcess) after attempting to stop it."
 }
 
-if (-not $CodexPath) {
-  $cmd = Get-Command codex.exe -ErrorAction SilentlyContinue
-  if (-not $cmd) {
-    $cmd = Get-Command codex -ErrorAction SilentlyContinue
-  }
-
-  if (-not $cmd) {
-    throw "Could not find codex on PATH. Re-run with -CodexPath C:\path\to\codex.exe."
-  }
-
-  $CodexPath = $cmd.Source
-}
-
+$CodexPath = Resolve-CodexCliPath -ExplicitPath $CodexPath
 $env:CODEX_CLI_PATH = $CodexPath
 
 Write-Host "Using Codex CLI: $env:CODEX_CLI_PATH"

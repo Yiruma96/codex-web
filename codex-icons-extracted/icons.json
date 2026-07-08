@@ -1,0 +1,128 @@
+[
+  {
+    "name": "codex-compose",
+    "label": "New chat / compose",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-search",
+    "label": "Search",
+    "width": 21,
+    "height": 21,
+    "viewBox": "0 0 21 21"
+  },
+  {
+    "name": "codex-clock",
+    "label": "Automations / clock",
+    "width": 18,
+    "height": 18,
+    "viewBox": "0 0 18 18"
+  },
+  {
+    "name": "codex-folder",
+    "label": "Project / folder",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-folder-plus",
+    "label": "Add project / folder plus",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-chevron-right",
+    "label": "Chevron right",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-chevron-down",
+    "label": "Chevron down",
+    "width": 20,
+    "height": 21,
+    "viewBox": "0 0 20 21"
+  },
+  {
+    "name": "codex-three-dots",
+    "label": "Project actions / more",
+    "width": 21,
+    "height": 21,
+    "viewBox": "0 0 21 21"
+  },
+  {
+    "name": "codex-plus",
+    "label": "Plus",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-cloud",
+    "label": "Cloud status",
+    "width": 21,
+    "height": 21,
+    "viewBox": "0 0 21 21"
+  },
+  {
+    "name": "codex-apps",
+    "label": "Plugins / apps grid",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-skills",
+    "label": "Skills",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-archive",
+    "label": "Archive",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-edit",
+    "label": "Edit / rename",
+    "width": 20,
+    "height": 21,
+    "viewBox": "0 0 20 21"
+  },
+  {
+    "name": "codex-trash",
+    "label": "Trash",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-worktree",
+    "label": "Worktree",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-expand",
+    "label": "Collapse/expand all",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  },
+  {
+    "name": "codex-collapse",
+    "label": "Collapse variant",
+    "width": 20,
+    "height": 20,
+    "viewBox": "0 0 20 20"
+  }
+]

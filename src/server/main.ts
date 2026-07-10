@@ -232,7 +232,7 @@ function ensureElectronLikeProcessContext(): void {
   };
   if (!versions.electron) {
     Object.defineProperty(versions, "electron", {
-      value: "41.2.0",
+      value: "42.1.0",
       configurable: true,
       enumerable: true,
       writable: false,

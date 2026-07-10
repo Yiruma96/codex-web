@@ -44,7 +44,7 @@
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "electron": "41.2.0",
+    "electron": "42.1.0",
     "http-server": "^14.1.1"
   }
 }

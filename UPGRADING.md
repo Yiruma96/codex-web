@@ -10,7 +10,7 @@ get the `scratch` directory to a known state by running the following
 
 ```bash
 rm -rf scratch scratch-backup # remove existing past scratch directories to start from clean state
-DEV=1 nix develop --command yarn run prepare:asar 
+DEV=1 nix develop --command yarn run prepare:asar
 mv scratch scratch-backup
 ```
 
@@ -28,7 +28,7 @@ there are a few places to update next.
 then temporarily comment out the patch lines in ./scripts/prepare_asar and run
 
 ```bash
-DEV=1 nix develop --command yarn run prepare:asar 
+DEV=1 nix develop --command yarn run prepare:asar
 cp -r scratch scratch-new-version-unmodified
 ```
 
@@ -40,7 +40,7 @@ sure to wait for its completion before doing validation. run it in a subagent.
 run the following to get the version of the new codex-cli
 
 ```bash
-scratch/Codex.app/Contents/Resources/codex --version
+scratch/ChatGPT.app/Contents/Resources/codex --version
 ```
 
 then update the `nix/codex/default.nix` file's `version` field and hashes to
@@ -50,9 +50,9 @@ point to the new version.
 
 now we have a few folders
 
-* `scratch-backup`: patches applied on top of old version of Codex Desktop
-* `scratch-new-version-unmodified`: plain extracted new version of Codex Desktop
-* `scratch`: working copy we will be modifying
+- `scratch-backup`: patches applied on top of old version of Codex Desktop
+- `scratch-new-version-unmodified`: plain extracted new version of Codex Desktop
+- `scratch`: working copy we will be modifying
 
 now carefully look at the patches in `patches/` and how they were applied in
 `scratch-backup` and bring the changes over to `scratch`. apply them directly
@@ -70,7 +70,7 @@ once that is done, uncomment the patch lines in `scripts/prepare_asar` and run
 ```bash
 mv scratch scratch-patched-inplace
 rm -rf scratch
-DEV=1 nix develop --command yarn run prepare:asar 
+DEV=1 nix develop --command yarn run prepare:asar
 ```
 
 then diff `./scratch-patched-inplace` with the resulting `./scratch` to validate
@@ -97,3 +97,23 @@ as loading taking forever (more than 1m). look out for that case too.
 
 if there are errors, bring them to the users attention and we will decide how to
 proceed.
+
+## Windows port
+
+The Windows fork is upgraded only after the upstream patch set above is current.
+Use two references together:
+
+1. the newest upstream commits and every semantic change in `patches/*.patch`;
+2. the most recent known-good Windows commit and its
+   `scripts/patch-windows-asar.mjs` implementation.
+
+Extract the newest installed Windows ASAR without modifying it, then locate the
+equivalent Windows chunks by stable content. Do not copy macOS chunk hashes and
+do not retain an old Windows replacement merely because its filename still
+exists. Every replacement must match exactly once, and the patcher must also be
+safe to run a second time.
+
+Run `setup-windows.ps1` to validate the complete Windows path. Record the Appx
+version, embedded ASAR version, `codexAppBrand`, and Electron version
+separately. A current ChatGPT-integrated build must declare
+`codexAppBrand=chatgpt`.

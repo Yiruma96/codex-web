@@ -263,7 +263,7 @@ const appBase = {
   },
   getVersion(): string {
     log("app.getVersion", []);
-    return "26.623.141536";
+    return "26.707.31123";
   },
   getLocale(): string {
     log("app.getLocale", []);
@@ -392,8 +392,8 @@ class BrowserWindow {
         getURL: (): string => {
           log(`BrowserWindow#${this.id}.webContents.getURL`, []);
           return String(
-            (this.webContents.mainFrame as { url?: string } | undefined)
-              ?.url ?? "",
+            (this.webContents.mainFrame as { url?: string } | undefined)?.url ??
+              "",
           );
         },
         isDestroyed: (): boolean => this.destroyed,
@@ -439,6 +439,13 @@ class BrowserWindow {
     BrowserWindow.focusedWindow = this;
     return new Proxy(this, {
       get: (target, prop) => {
+        // BrowserWindow instances are returned from async startup helpers. A
+        // synthetic `then` property makes the Proxy look like a Promise and
+        // leaves those helpers waiting forever.
+        if (prop === "then") {
+          return undefined;
+        }
+
         if (prop in target) {
           return target[prop as keyof typeof target];
         }
@@ -454,10 +461,7 @@ class BrowserWindow {
 
   static getFocusedWindow(): BrowserWindow | null {
     log("BrowserWindow.getFocusedWindow", []);
-    if (
-      BrowserWindow.focusedWindow &&
-      !BrowserWindow.focusedWindow.destroyed
-    ) {
+    if (BrowserWindow.focusedWindow && !BrowserWindow.focusedWindow.destroyed) {
       return BrowserWindow.focusedWindow;
     }
     return BrowserWindow.getAllWindows()[0] ?? null;
@@ -496,6 +500,16 @@ class BrowserWindow {
     return this.emitter.removeListener(event, listener);
   }
 
+  async loadURL(url: string): Promise<void> {
+    await (this.webContents.loadURL as (nextUrl: string) => Promise<void>)(url);
+  }
+
+  async loadFile(...args: unknown[]): Promise<void> {
+    await (
+      this.webContents.loadFile as (...loadFileArgs: unknown[]) => Promise<void>
+    )(...args);
+  }
+
   close(): void {
     log(`BrowserWindow#${this.id}.close`, []);
     this.emitter.emit("close", {
@@ -516,6 +530,11 @@ class BrowserWindow {
   isDestroyed(): boolean {
     log(`BrowserWindow#${this.id}.isDestroyed`, []);
     return this.destroyed;
+  }
+
+  isFocused(): boolean {
+    log(`BrowserWindow#${this.id}.isFocused`, []);
+    return BrowserWindow.focusedWindow === this && !this.destroyed;
   }
 
   removeMenu(): void {
@@ -875,14 +894,19 @@ function createSessionStub(label: string): {
     },
   };
 }
-const partitionSessions = new Map<string, ReturnType<typeof createSessionStub>>();
+const partitionSessions = new Map<
+  string,
+  ReturnType<typeof createSessionStub>
+>();
 const session = {
   defaultSession: createSessionStub("session.defaultSession"),
   fromPartition(partition: string): ReturnType<typeof createSessionStub> {
     log("session.fromPartition", [partition]);
     let partitionSession = partitionSessions.get(partition);
     if (!partitionSession) {
-      partitionSession = createSessionStub(`session.fromPartition(${partition})`);
+      partitionSession = createSessionStub(
+        `session.fromPartition(${partition})`,
+      );
       partitionSessions.set(partition, partitionSession);
     }
     return partitionSession;

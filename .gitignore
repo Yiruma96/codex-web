@@ -2,6 +2,7 @@ node_modules/
 scratch*/
 sentry
 Codex.app/
+ChatGPT.app/
 cloudflare-url.txt
 codex-web.*.log
 src/server/**/*.d.ts

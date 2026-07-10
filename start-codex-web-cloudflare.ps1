@@ -22,6 +22,12 @@ function Ensure-CodexWebBuild {
 
   Write-Host "codex-web build outputs are missing. Running Windows setup first..."
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript
+  if ($LASTEXITCODE -ne 0) {
+    throw "Windows setup failed with exit code $LASTEXITCODE."
+  }
+  if (-not (Test-Path -LiteralPath $serverEntry) -or -not (Test-Path -LiteralPath $webviewEntry)) {
+    throw "Windows setup completed without producing the required codex-web build outputs."
+  }
 }
 
 function Resolve-CommandPath {

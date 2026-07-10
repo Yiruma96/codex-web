@@ -41,8 +41,9 @@ function printHelp() {
   console.log(`Usage:
   node scripts/extract-needed-asar.mjs --asar <app.asar> [--out scratch/asar] [--force]
 
-Extracts only the Codex Desktop files codex-web needs on Windows. This avoids
-full asar extraction failures when the archive references unpacked native files.`);
+Extracts only the ChatGPT Desktop Codex files codex-web needs on Windows. This
+avoids full asar extraction failures when the archive references unpacked native
+files.`);
 }
 
 function normalizeArchivePath(entry) {

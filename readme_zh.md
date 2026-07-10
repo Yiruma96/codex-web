@@ -11,16 +11,26 @@ Windows 机器上运行。
 Codex Desktop 已合并到 ChatGPT Desktop。当前 Windows 商店包有一组容易混淆的
 标识：
 
-| 层级                   | 当前验证值                    |
-| ---------------------- | ----------------------------- |
-| 商店/Appx 技术身份     | `OpenAI.Codex 26.707.3563.0`  |
-| 应用显示名和可执行文件 | `ChatGPT` / `app\ChatGPT.exe` |
-| ASAR 内部版本          | `26.707.31123`                |
-| ASAR 品牌              | `codexAppBrand=chatgpt`       |
-| Electron               | `42.1.0`                      |
+| 层级                   | 当前验证值                                                         |
+| ---------------------- | ------------------------------------------------------------------ |
+| 商店/Appx 技术身份     | `OpenAI.Codex 26.707.3563.0`                                       |
+| 应用显示名和可执行文件 | `ChatGPT` / `app\ChatGPT.exe`                                      |
+| ASAR 内部版本          | `26.707.31123`                                                     |
+| ASAR 品牌              | `codexAppBrand=chatgpt`                                            |
+| Electron               | `42.1.0`                                                           |
+| ASAR SHA-256           | `92AA8948DDC8A2271269A05CCEE891655BA7352449E3800D891E5719C1BB7EBE` |
+| 上游 macOS patch 参考  | `26.707.30751`（`28b9a81`）                                        |
 
 因此安装脚本不会用 `OpenAI.Codex`、`productName` 等名字猜品牌，而是解包后严格检查
 `codexAppBrand=chatgpt`。Appx 版本与 ASAR 版本分别记录，不能混用。
+
+以上值已于 2026-07-10 从当前机器实际安装的 Microsoft Store 包重新读取并校验。
+setup 每次都会选择本机最新安装的 Appx，再直接读取 ASAR 元数据；如果 ChatGPT 品牌
+或补丁锚点不匹配就会失败，不会把旧 ASAR 当成新版本继续构建。
+
+网页界面仍然很像旧版 Codex Desktop 是正常现象：这次合并保留了 Codex 工作区的
+renderer，主要变化在宿主、品牌和后端集成。模型是否可用则来自 Codex CLI、当前登录
+账号和后端模型列表，所以 GPT-5.6 等新模型可以先于界面改版出现。
 
 本次 Windows patch 以两个地方为依据：
 

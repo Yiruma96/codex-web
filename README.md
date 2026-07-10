@@ -52,6 +52,28 @@ though its displayed application and executable are ChatGPT. The setup script
 validates the extracted ASAR using `codexAppBrand=chatgpt`; it does not infer
 the brand from the Store package name.
 
+Current Windows target, re-verified from the installed Store package on
+2026-07-10:
+
+| Layer                          | Verified value                                                     |
+| ------------------------------ | ------------------------------------------------------------------ |
+| Store/Appx package             | `OpenAI.Codex 26.707.3563.0`                                       |
+| Embedded ASAR                  | `26.707.31123`                                                     |
+| ASAR identity                  | `openai-codex-electron`, `codexAppBrand=chatgpt`                   |
+| Electron                       | `42.1.0`                                                           |
+| ASAR SHA-256                   | `92AA8948DDC8A2271269A05CCEE891655BA7352449E3800D891E5719C1BB7EBE` |
+| Upstream macOS patch reference | `26.707.30751` (`28b9a81`)                                         |
+
+The Appx version and embedded ASAR version are separate version domains. The
+Windows setup always selects the newest installed Appx package, reads the ASAR
+metadata directly, and fails if the ChatGPT brand or patch anchors do not
+match.
+
+The web UI still resembles the previous Codex Desktop interface because the
+ChatGPT integration retains the Codex workspace renderer. Model availability
+comes from the Codex CLI, the signed-in account, and the backend model catalog,
+so newer models can appear without a matching visual redesign.
+
 ### macOS and Linux
 
 run it with `npx`:

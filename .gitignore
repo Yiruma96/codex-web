@@ -5,6 +5,8 @@ Codex.app/
 ChatGPT.app/
 cloudflare-url.txt
 codex-web.*.log
+*.stdout.log
+*.stderr.log
 src/server/**/*.d.ts
 src/server/**/*.d.ts.map
 src/server/**/*.js
